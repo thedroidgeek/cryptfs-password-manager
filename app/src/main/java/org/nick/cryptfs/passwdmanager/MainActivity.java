@@ -6,6 +6,7 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
 import android.content.DialogInterface;
+import android.content.pm.ApplicationInfo;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,6 +19,8 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
 
+import java.lang.reflect.Method;
+
 public class MainActivity extends Activity implements OnClickListener {
 
     private static final String TAG = MainActivity.class.getSimpleName();
@@ -25,6 +28,7 @@ public class MainActivity extends Activity implements OnClickListener {
     private static final String ARG_NEW_PASSWD = "newPasswd";
     private static final String ARG_CURRENT_PASSWD = "currentPasswd";
 
+    private static final boolean IS_PIE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P;
     private static final boolean IS_LOLLIPOP = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
 
     private EditText currentPasswdText;
@@ -83,7 +87,7 @@ public class MainActivity extends Activity implements OnClickListener {
         // finish();
         // }
 
-        new AsyncTask<Void, Void, Boolean>() {
+        new AsyncTask<Void, Void, Integer>() {
 
             @Override
             protected void onPreExecute() {
@@ -92,43 +96,55 @@ public class MainActivity extends Activity implements OnClickListener {
             }
 
             @Override
-            protected Boolean doInBackground(Void... params) {
+            protected Integer doInBackground(Void... params) {
                 try {
+                    if (IS_PIE) {
+                        checkCurrentPassword = false;
+                        Method method = ApplicationInfo.class.getDeclaredMethod("isPrivilegedApp");
+                        return (Boolean)method.invoke(getApplicationInfo()) ? 0 : 2;
+                    }
+
                     boolean canGainSu = SuShell.canGainSu(getApplicationContext());
 
                     if (!selinuxPolicyPatched) {
                         selinuxPolicyPatched = SuShell.patchLollipopPolicy();
                     }
 
-                    boolean cyanogenmod = SuShell.isCyanogenmod();
-
-                    boolean result = canGainSu && (selinuxPolicyPatched || cyanogenmod);
-                    if (!result) {
-                        return result;
+                    if (!canGainSu || (!selinuxPolicyPatched && !SuShell.isCyanogenmod())) {
+                        return 1;
                     }
 
                     passwordType = CryptfsCommands.getPasswordType();
                     checkCurrentPassword = passwordType == null ? true :
                             !CryptfsCommands.PWTYPE_DEFAULT.equals(passwordType);
 
-                    return result;
+                    return 0;
                 } catch (Exception e) {
                     Log.e(TAG, "Error: " + e.getMessage(), e);
-                    return false;
+                    return 1;
                 }
             }
 
             @Override
-            protected void onPostExecute(Boolean result) {
+            protected void onPostExecute(Integer result) {
+
                 setProgressBarIndeterminateVisibility(false);
 
-                if (!result) {
-                    Toast.makeText(MainActivity.this, R.string.cannot_get_su,
-                            Toast.LENGTH_LONG).show();
-                    finish();
-                } else {
-                    currentPasswdText.setEnabled(checkCurrentPassword);
-                    changePasswordButon.setEnabled(true);
+                switch (result) {
+                    case 1:
+                        Toast.makeText(MainActivity.this, R.string.cannot_get_su,
+                                Toast.LENGTH_LONG).show();
+                        finish();
+                        break;
+                    case 2:
+                        Toast.makeText(MainActivity.this, R.string.not_priv_app,
+                                Toast.LENGTH_LONG).show();
+                        finish();
+                        break;
+                    default:
+                        currentPasswdText.setEnabled(checkCurrentPassword);
+                        changePasswordButon.setEnabled(true);
+                        break;
                 }
             }
         }.execute();
@@ -244,7 +260,10 @@ public class MainActivity extends Activity implements OnClickListener {
                 }
             }
 
-            if (IS_LOLLIPOP) {
+            if (IS_PIE) {
+                return CryptfsCommands.changeCryptfsPasswordPie(newPasswd,
+                        currentPasswd) ? PASSWD_CHANGED : PASSWD_CHANGE_ERROR;
+            } else if (IS_LOLLIPOP) {
                 return CryptfsCommands.changeCryptfsPasswordLollipop(newPasswd,
                         currentPasswd) ? PASSWD_CHANGED : PASSWD_CHANGE_ERROR;
             } else {

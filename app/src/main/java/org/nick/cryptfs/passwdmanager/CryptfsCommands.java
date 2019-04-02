@@ -1,9 +1,11 @@
 package org.nick.cryptfs.passwdmanager;
 
 import android.os.Build;
+import android.os.IBinder;
 import android.util.Log;
 
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -12,8 +14,8 @@ public class CryptfsCommands {
     private static final String TAG = CryptfsCommands.class.getSimpleName();
 
     private static final boolean IS_JB = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN;
-
     private static final boolean IS_M = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
+    private static final boolean IS_P = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P;
 
     private static final String GET_PROP_CMD_PATH = "/system/bin/getprop";
     private static final String CRYPTO_STATE_PROP = "ro.crypto.state";
@@ -47,7 +49,27 @@ public class CryptfsCommands {
     public static final String PWTYPE_DEFAULT = "default";
     public static final String DEFAULT_PASSWORD = "default_password";
 
+    private static final int CRYPT_TYPE_PASSWORD = 0;
+
     public CryptfsCommands() {
+    }
+
+    private static Object sMountService = null;
+
+    private static Object getMountService() {
+        if (sMountService == null) {
+            try {
+                Class localClass = Class.forName("android.os.ServiceManager");
+                IBinder binder = (IBinder) localClass.getMethod("getService",
+                        new Class[] { String.class })
+                        .invoke(localClass, new Object[] { "mount" });
+                sMountService = Class.forName(binder.getInterfaceDescriptor()).getClasses()[0]
+                        .getMethod("asInterface", new Class[] { IBinder.class }).invoke(null, binder);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        return sMountService;
     }
 
     public static boolean checkCryptfsPassword(String password) {
@@ -61,6 +83,26 @@ public class CryptfsCommands {
         List<String> response = SuShell.runWithSu(String.format(
                 CRYPTFS_VERIFYPW_LOLLIPOP_CMD, encodedPassword));
         return checkVdcResponse(response);
+    }
+
+    public static boolean checkCryptfsPasswordPie(String password) {
+        // this doesn't work unless we're the system process :/
+        /*Object mountService = getMountService();
+        Class storageManager = mountService.getClass();
+        int result = -1;
+        try {
+            result = (int) storageManager.getMethod("verifyEncryptionPassword",
+                    new Class[] { String.class })
+                    .invoke(mountService, password);
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        }
+        return result == 0;*/
+        return true;
     }
 
     public static String getPasswordType() {
@@ -190,6 +232,10 @@ public class CryptfsCommands {
         return changeResult && verifyResult;
     }
 
+    public static boolean changeCryptfsPasswordPie(String newPassword, String oldPassword) {
+        return checkCryptfsPasswordPie(oldPassword) && changePasswordNoVerifyPie(newPassword);
+    }
+
     private static boolean changePasswordNoVerify(String newPassword) {
         List<String> response = SuShell.run("su",
                 String.format(CRYPTFS_CHANGEPW_CMD, escape(newPassword)));
@@ -212,6 +258,24 @@ public class CryptfsCommands {
                                 : String.format(command, encodedPassword));
 
         return checkVdcResponse(response);
+    }
+
+    private static boolean changePasswordNoVerifyPie(String newPassword) {
+        Object mountService = getMountService();
+        Class storageManager = mountService.getClass();
+        int result = -1;
+        try {
+            result = (int) storageManager.getMethod("changeEncryptionPassword",
+                    new Class[] { int.class, String.class })
+                    .invoke(mountService, new Object[] { CRYPT_TYPE_PASSWORD, newPassword });
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        }
+        return result == 0;
     }
 
     public static boolean isDeviceEncrypted() {
