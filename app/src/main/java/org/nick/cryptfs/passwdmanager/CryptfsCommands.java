@@ -15,7 +15,7 @@ public class CryptfsCommands {
 
     private static final boolean IS_JB = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN;
     private static final boolean IS_M = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
-    private static final boolean IS_P = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P;
+    private static final boolean IS_P = Build.VERSION.SDK_INT >= 28;
 
     private static final String GET_PROP_CMD_PATH = "/system/bin/getprop";
     private static final String CRYPTO_STATE_PROP = "ro.crypto.state";

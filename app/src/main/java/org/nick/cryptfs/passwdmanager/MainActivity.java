@@ -28,7 +28,7 @@ public class MainActivity extends Activity implements OnClickListener {
     private static final String ARG_NEW_PASSWD = "newPasswd";
     private static final String ARG_CURRENT_PASSWD = "currentPasswd";
 
-    private static final boolean IS_PIE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P;
+    private static final boolean IS_PIE = Build.VERSION.SDK_INT >= 28;
     private static final boolean IS_LOLLIPOP = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
 
     private EditText currentPasswdText;
